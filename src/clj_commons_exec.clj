@@ -110,7 +110,7 @@
         (when out (try (.flush out) (catch IOException _)))))))
 
 (defn string->input-stream [^String s & [^String encode]]
-  (ByteArrayInputStream. (.getBytes s (or encode (System/getProperty "file.encoding")))))
+  (ByteArrayInputStream. (.getBytes (str s \newline) (or encode (System/getProperty "file.encoding")))))
 
 (defn sh [[^String comm & args] & [opts]]
   (let [command (CommandLine. comm)
