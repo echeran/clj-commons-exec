@@ -1,5 +1,6 @@
 (ns clj-commons-exec
-  (:require [clojure.java.io :as javaio :only [file]])
+  (:require [clojure.java.io :as javaio :only [file]]
+            [clojure.string :as string])
   (:import [java.io
             ByteArrayOutputStream
             ByteArrayInputStream
@@ -166,3 +167,48 @@
                        ins outs errs)]
     (doall
      (map sh cmds-list opts-list))))
+
+(defn- println-err
+  "convenience fn to print to std err"
+  [s]
+  (binding [*out* *err*]
+    (println s)))
+
+(defn cmd-pass-through
+  "a helper function that takes a single result map of a single process of the kind clj-commons-exec/sh returns. passes the out and err to stdout and stderr and then re-throws an exception if one was caught"
+  [result]
+  (let [{:keys [out err exception]} result]
+    (when out
+      (println out))
+    (when err
+      (println-err err))
+    (when exception
+      (do
+        (.printStackTrace exception)
+        (throw exception)))
+    result))
+
+(defn run-cmd
+  "take the args for clj-commons-exec.core/sh and force the subprocess call to be synchronous.  throw an exception if one is caught"
+  [& args]
+  (let [result @(apply sh args)]
+    (when-let [e (get result :exception)]
+      (println-err "error in running cmd" (string/join " " args)))
+    (cmd-pass-through result)))
+
+(defn run-piped-cmd
+  "take the args for clj-commons-exec.core/sh and force the subprocess call to be synchronous.  throw an exception if one is caught"
+  [& args]
+  (let [results (map deref (apply sh-pipe args))
+        kidxed-fn (fn [idx res]
+                    (when-let [e (get res :exception)]
+                      {:exception e
+                       :result res
+                       :cmd (nth args idx)}))
+        e-cmds (keep-indexed kidxed-fn results)
+        last-result (last results)]
+    (if-let [first-e-cmd (first e-cmds)]
+      (do
+        (println-err "error in running cmd" (get first-e-cmd :cmd) "in piped commands" (string/join " " args))
+        (cmd-pass-through (get first-e-cmd :result)))
+      (cmd-pass-through last-result))))
